@@ -154,7 +154,7 @@ def main():
     with st.expander("Project concepts"):
         st.markdown("- **DBMS:** transactions, concurrency control, indexing, aborts and throughput.\n- **OS:** worker-process CPU, resident memory and context-switch counters.\n- **Systems:** subprocess execution, timeouts, logs, metadata and reproducible experiments.\n\nResource sampling is best-effort; very short runs may not produce samples. Failed runs are retained but should not be treated as valid performance measurements.")
 
-         st.divider()
+    st.divider()
     st.header("SQL Experiment Explorer")
 
     st.caption(
