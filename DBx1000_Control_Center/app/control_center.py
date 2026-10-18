@@ -1,3 +1,4 @@
+from app.database import initialise_database, save_experiment, run_query
 import csv, json, os, platform, re, subprocess, threading, time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -90,6 +91,10 @@ def run_one(repo, threads, timeout):
     duration=round(time.monotonic()-start,3); parsed=parse_log(logpath.read_text(errors="replace") if logpath.exists() else "")
     row={"run_id":run_id,"timestamp_utc":stamp,"threads":threads,"cc_alg":cfg.get("CC_ALG","unknown"),"index_struct":cfg.get("INDEX_STRUCT","unknown"),"workload":cfg.get("WORKLOAD","unknown"),"status":status,"exit_code":code,"duration_seconds":duration,**{k:parsed[k] for k in ("completed_txns","aborts","reported_runtime_seconds","throughput_txn_s")},"cpu_percent_mean":round(sum(x["cpu"] for x in samples)/len(samples),2) if samples else None,"rss_mb_peak":round(max((x["rss"] for x in samples),default=0),2) if samples else None,"context_switches_voluntary":max((x["vol"] for x in samples),default=None),"context_switches_involuntary":max((x["invol"] for x in samples),default=None),"git_commit":git_commit(repo),"log_file":str(logpath.relative_to(APP_DIR)),"command":" ".join(cmd)}
     save(row)
+    try:
+        save_experiment(row)
+    except Exception as exc:
+            error = f"SQLite persistence failed: {exc}"
     (LOGS/f"{run_id}.json").write_text(json.dumps({"result":row,"error":error,"samples":samples,"config":cfg,"platform":platform.platform()},indent=2))
     return row,error,logpath
 
@@ -153,3 +158,37 @@ def main():
         st.download_button("⬇ Export CSV",df.to_csv(index=False).encode(),file_name="dbx1000_results.csv",mime="text/csv")
     with st.expander("Project concepts"):
         st.markdown("- **DBMS:** transactions, concurrency control, indexing, aborts and throughput.\n- **OS:** worker-process CPU, resident memory and context-switch counters.\n- **Systems:** subprocess execution, timeouts, logs, metadata and reproducible experiments.\n\nResource sampling is best-effort; very short runs may not produce samples. Failed runs are retained but should not be treated as valid performance measurements.")
+
+    st.divider()
+    st.header("SQL Experiment Explorer")
+
+    st.caption(
+        "Query the SQLite database containing benchmark results."
+    )
+
+    query = st.text_area(
+        "SQL query",
+        value="""
+SELECT
+    e.algorithm,
+    e.thread_count,
+    m.throughput
+FROM experiments e
+JOIN metrics m ON e.run_id = m.run_id
+WHERE e.status = 'completed'
+ORDER BY m.throughput DESC
+""",
+        height=160,
+    )
+
+    if st.button("Execute SQL"):
+        try:
+            results = run_query(query)
+
+            if results:
+                st.dataframe(results, use_container_width=True)
+            else:
+                st.info("The query returned no rows.")
+
+        except Exception as exc:
+            st.error(f"Query failed: {exc}")
