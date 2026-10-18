@@ -153,3 +153,37 @@ def main():
         st.download_button("⬇ Export CSV",df.to_csv(index=False).encode(),file_name="dbx1000_results.csv",mime="text/csv")
     with st.expander("Project concepts"):
         st.markdown("- **DBMS:** transactions, concurrency control, indexing, aborts and throughput.\n- **OS:** worker-process CPU, resident memory and context-switch counters.\n- **Systems:** subprocess execution, timeouts, logs, metadata and reproducible experiments.\n\nResource sampling is best-effort; very short runs may not produce samples. Failed runs are retained but should not be treated as valid performance measurements.")
+
+         st.divider()
+    st.header("SQL Experiment Explorer")
+
+    st.caption(
+        "Query the SQLite database containing benchmark results."
+    )
+
+    query = st.text_area(
+        "SQL query",
+        value="""
+SELECT
+    e.algorithm,
+    e.thread_count,
+    m.throughput
+FROM experiments e
+JOIN metrics m ON e.run_id = m.run_id
+WHERE e.status = 'completed'
+ORDER BY m.throughput DESC
+""",
+        height=160,
+    )
+
+    if st.button("Execute SQL"):
+        try:
+            results = run_query(query)
+
+            if results:
+                st.dataframe(results, use_container_width=True)
+            else:
+                st.info("The query returned no rows.")
+
+        except Exception as exc:
+            st.error(f"Query failed: {exc}")
