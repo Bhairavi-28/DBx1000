@@ -91,6 +91,10 @@ def run_one(repo, threads, timeout):
     duration=round(time.monotonic()-start,3); parsed=parse_log(logpath.read_text(errors="replace") if logpath.exists() else "")
     row={"run_id":run_id,"timestamp_utc":stamp,"threads":threads,"cc_alg":cfg.get("CC_ALG","unknown"),"index_struct":cfg.get("INDEX_STRUCT","unknown"),"workload":cfg.get("WORKLOAD","unknown"),"status":status,"exit_code":code,"duration_seconds":duration,**{k:parsed[k] for k in ("completed_txns","aborts","reported_runtime_seconds","throughput_txn_s")},"cpu_percent_mean":round(sum(x["cpu"] for x in samples)/len(samples),2) if samples else None,"rss_mb_peak":round(max((x["rss"] for x in samples),default=0),2) if samples else None,"context_switches_voluntary":max((x["vol"] for x in samples),default=None),"context_switches_involuntary":max((x["invol"] for x in samples),default=None),"git_commit":git_commit(repo),"log_file":str(logpath.relative_to(APP_DIR)),"command":" ".join(cmd)}
     save(row)
+    try:
+        save_experiment(row)
+    except Exception as exc:
+            error = f"SQLite persistence failed: {exc}"
     (LOGS/f"{run_id}.json").write_text(json.dumps({"result":row,"error":error,"samples":samples,"config":cfg,"platform":platform.platform()},indent=2))
     return row,error,logpath
 
