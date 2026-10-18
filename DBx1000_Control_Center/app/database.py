@@ -43,3 +43,74 @@ def initialise_database():
                     ON DELETE CASCADE
             );
         """)
+
+def save_experiment(row):
+    initialise_database()
+
+    with get_connection() as connection:
+        connection.execute("""
+            INSERT OR REPLACE INTO experiments (
+                run_id, timestamp, workload, algorithm,
+                index_type, thread_count, status,
+                exit_code, git_commit
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            row["run_id"],
+            row["timestamp_utc"],
+            row["workload"],
+            row["cc_alg"],
+            row["index_struct"],
+            int(row["threads"]),
+            row["status"],
+            row["exit_code"],
+            row["git_commit"],
+        ))
+
+        connection.execute("""
+            INSERT INTO metrics (
+                run_id, transaction_count, abort_count,
+                runtime_seconds, throughput,
+                cpu_percent, memory_mb
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            row["run_id"],
+            row["completed_txns"],
+            row["aborts"],
+            row["reported_runtime_seconds"],
+            row["throughput_txn_s"],
+            row["cpu_percent_mean"],
+            row["rss_mb_peak"],
+        ))
+
+
+def run_query(sql):
+    sql = sql.strip()
+    if not sql:
+        raise ValueError("Enter a SQL query.")
+
+    
+    sql = sql.rstrip(";").strip()
+    if ";" in sql:
+        raise ValueError("Execute one query at a time.")
+    initialise_database()
+    with get_connection() as connection:
+        # SQLite itself enforces read-only query behaviour.
+        def authorise(action, arg1, arg2, database_name, trigger_name):
+            allowed_actions = {
+                sqlite3.SQLITE_SELECT,
+                sqlite3.SQLITE_READ,
+                sqlite3.SQLITE_FUNCTION,
+                sqlite3.SQLITE_RECURSIVE,
+            }
+            if action in allowed_actions:
+                return sqlite3.SQLITE_OK
+            return sqlite3.SQLITE_DENY
+
+        connection.set_authorizer(authorise)
+        cursor = connection.execute(sql)
+
+        if cursor.description is None:
+            raise ValueError("The query did not return a result set.")
+        return [dict(row) for row in cursor.fetchall()]
